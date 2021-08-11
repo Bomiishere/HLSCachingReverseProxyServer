@@ -1,54 +1,55 @@
 import GCDWebServer
 import PINCache
 
-open class HLSCachingReverseProxyServer {
-  static let originURLKey = "__hls_origin_url"
+@objc
+open class HLSCachingReverseProxyServer: NSObject {
+    static let originURLKey = "__hls_origin_url"
 
-  private let webServer: GCDWebServer
-  private let urlSession: URLSession
-  private let cache: PINCaching
+    private let webServer: GCDWebServer
+    private let urlSession: URLSession
+    private let cache: PINCaching
 
-  private(set) var port: Int?
+    private(set) var port: Int?
+    
+    public override init() {
+        self.webServer = GCDWebServer()
+        self.urlSession = URLSession.shared //(configuration: .default)
+        self.cache = PINCache.shared
+        self.cache.removeAllObjects()
+        super.init()
+        self.addRequestHandlers()
+    }
+    
+    // MARK: Starting and Stopping Server
+    @objc
+    open func start(port: UInt) {
+        guard !self.webServer.isRunning else { return }
+        self.port = Int(port)
+        self.webServer.start(withPort: port, bonjourName: nil)
+    }
 
-  public init(webServer: GCDWebServer, urlSession: URLSession, cache: PINCaching) {
-    self.webServer = webServer
-    self.urlSession = urlSession
-    self.cache = cache
-
-    self.addRequestHandlers()
-  }
-
-
-  // MARK: Starting and Stopping Server
-
-  open func start(port: UInt) {
-    guard !self.webServer.isRunning else { return }
-    self.port = Int(port)
-    self.webServer.start(withPort: port, bonjourName: nil)
-  }
-
-  open func stop() {
-    guard self.webServer.isRunning else { return }
-    self.port = nil
-    self.webServer.stop()
-  }
-
+    @objc
+    open func stop() {
+        guard self.webServer.isRunning else { return }
+        self.port = nil
+        self.webServer.stop()
+      }
 
   // MARK: Resource URL
+    @objc
+    open func reverseProxyURL(from originURL: URL) -> URL? {
+        guard let port = self.port else { return nil }
 
-  open func reverseProxyURL(from originURL: URL) -> URL? {
-    guard let port = self.port else { return nil }
+        guard var components = URLComponents(url: originURL, resolvingAgainstBaseURL: false) else { return nil }
+        components.scheme = "http"
+        components.host = "127.0.0.1"
+        components.port = port
 
-    guard var components = URLComponents(url: originURL, resolvingAgainstBaseURL: false) else { return nil }
-    components.scheme = "http"
-    components.host = "127.0.0.1"
-    components.port = port
+        let originURLQueryItem = URLQueryItem(name: Self.originURLKey, value: originURL.absoluteString)
+        components.queryItems = (components.queryItems ?? []) + [originURLQueryItem]
 
-    let originURLQueryItem = URLQueryItem(name: Self.originURLKey, value: originURL.absoluteString)
-    components.queryItems = (components.queryItems ?? []) + [originURLQueryItem]
-
-    return components.url
-  }
+        return components.url
+    }
 
 
   // MARK: Request Handler
